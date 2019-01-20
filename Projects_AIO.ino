@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 
-// Unused defines:
+// Unused pin defines:
 #define UnDefined0 = 4
 #define UnDefined1 = 5 // PWM
 #define UnDefined2 = 6 // PWM
@@ -9,7 +9,7 @@
 #define UnDefined4 = A2
 #define UnDefined5 = A3
 
-// Tempurature defines:
+// Tempurature pin defines:
 #define Ambient A0
 #define UpperAmbient A1
 #define FanMOSFET 3
@@ -18,14 +18,14 @@
 #define RelayOutput 11
 #define PowerButton 12
 
-// Command defines:
+// Command pin defines:
 #define RX 0
 #define TX 1
 #define SCL A4
 #define SDA A5
 #define CMDSIZE 10
 
-// Lighting defines
+// Lighting pin defines
 #define DrawerLightingMOSFET 10
 #define CabinetLightingMOSFET 9
 #define DrawerSwitch 8
@@ -126,13 +126,9 @@ void loop()
     analogWrite(RelayOutput, 0);
     ShuttingDown = true;
   }
-  else if (ShuttingDown == false)
-  {
-    analogWrite(RelayOutput, 255);
-  }
   debug();
   DoLighting();
-  //delay(250);
+  delay(52);
 }
 
 void DoLighting()
@@ -249,7 +245,7 @@ void debug()
   {
     Serial.println(debugFive + debugSeven); // shutting down
   }
-  else if (ShuttingDown == false)
+  else
   {
     Serial.println(debugFive + debugSix); // online
   }
