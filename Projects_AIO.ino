@@ -41,7 +41,7 @@
 
 // Debug variables:
 bool DebugFirstPass = true; // only useful to the extent the Serial output might contain an offline message.
-int ButtonMillisCooldown = 1000; // initial value of 1 second
+int ButtonMillisCooldown = 0;
 bool DoLighting = true;
 bool DoRelay = true;
 bool DoTemperature = false;
@@ -137,11 +137,14 @@ void loop()
 {
   DeltaTime = millis();
   DeltaTime -= LastMillis;
-  ButtonMillisCooldown -= DeltaTime; // Reduce this cooldown by DeltaTime. DeltaTime: 150 = (DeltaTime: 150 - 100) = 50; // ms
+  if (ButtonMillisCooldown > 0)
+  {
+    ButtonMillisCooldown -= DeltaTime; // Reduce this cooldown by DeltaTime. DeltaTime: 150 = (DeltaTime: 150 - 100) = 50; // ms
+  }
   if ((digitalRead(PowerButton) == LOW) && (ButtonMillisCooldown <= 0))// The power button has been closed to ground, and the cooldown has at least elapsed.
   {
     digitalWrite(RelayOutput, 0); // Write LOW to the relay's MOSFET
-    ButtonMillisCooldown = 2000; // The button grounded has been acted upon, set a 2 second delay before it can be again.
+    ButtonMillisCooldown = 100; // The button grounded has been acted upon, set a 2 second delay before it can be again.
     ShuttingDown = true; // Enable shutdown debug output, the pin has already been written to.
   }
   DebugFirstPass = true; // Not a result of goto

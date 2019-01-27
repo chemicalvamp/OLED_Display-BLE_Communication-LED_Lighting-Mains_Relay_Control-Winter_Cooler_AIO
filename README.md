@@ -14,7 +14,7 @@ Current perpetual next stage(s):
 			LastMillis = millis();
 	-PWM 12V computer case fan winter cooler climate control. (working)
 	-Default On Relay controller. (working)
-	!-PWM breathing 12V LED strip light (working)
+	-PWM breathing 12V LED strip light (working)
 	-Microswitch grounded when door is open to enable maximum output and enable previously disabled strips. (working)
 	
 Future goals and current specs:
