@@ -2,21 +2,21 @@
 #include <U8g2lib.h>
 
 // Remaining unused pin defines:
-#define UnDefined0 = 4
-#define UnDefined3 = 13
-#define UnDefined5 = A2
-#define UnDefined6 = A3
+#define Unused0 A2
+#define Unused1 A3
+#define unused2 A6
+#define unused3 A7
 
 // https://learn.adafruit.com/assets/571
 // Tempurature pin defines:
 #define BoardThermisterPin A1
 #define RemoteThermisterPin A0
 #define ThermisterPin A0 // What will be read
-#define ThermisterNominal 9920
 #define SamplesCount 5
-#define TemperatureNominal 23
-#define BCoefficient 3950 // Scary maths
-#define SeriesResistor 9884
+#define TemperatureNominal 18  // Tweaking #1
+#define ThermisterNominal 52000 // Tweaking #2
+#define SeriesResistor 6000  // Tweaking #3
+#define BCoefficient 3950 // Scary maths don't touch
 #define FanMOSFET 3 // PWM
 
 // Relay pin defines:
@@ -35,7 +35,7 @@
 #define CabinetLightingMOSFET 6 // the ground for the interior LED strip will be toggled on when this pin goes HIGH. PWM
 #define AuxLightingMOSFET 9 // Not used but present in the breadboard. PWM
                             // there is a 10K resistor to ground on all MOSFETs
-#define DrawerSwitch 8 // Center pin is ground and the hinge side pin is this pin
+#define DrawerSwitch 8 // Hinge pin is ground and the (opposite) roller side pin is this pin
 #define CabinetSwitch 7 // Unused, all switches are paralleled together
 #define DopplerInput 2 // Unused, will try a module in the future.
 
@@ -63,10 +63,9 @@ unsigned long PWMChangeDelay = 10; // Simple delay between PWM change actions
 uint8_t SampleIndex;
 float Samples[SamplesCount];
 float Steinhart; // Formula variable for temperature in °C
-float Steinhartcalibration = 39.00f; // The adjustment Made to the end temperature so it displays the same as my probe thermometer.
-float Differential = 5; // The difference in tempurature between Average and Desired.
+float Differential = 0.00f; // The difference in tempurature between Average and Desired.
 float AverageTemperature; // The average temperature for the last 5 cycles
-float DesiredAmbient = 7.03; // Desired tempurature for this local space °C. Can you see the broken? o.0
+float DesiredAmbient = 11.95; // Desired tempurature for this local space °C. Can you see the broken? o.0
 int FanPWM = 0; // The value to be written to FanMOSFET pin 3
 
 // Relay Variables:
@@ -187,7 +186,7 @@ SecondPass:              // the goto
       Serial.println(DebugFive + DebugSix); // "Relay state: " + "Online" *newline*
     }
   }
-  delay(700); // For the ease of reading Serial
+  delay(350); // For the ease of reading Serial
   LastMillis = millis(); // Finally save millis to LastMillis before ending this cycle.
 }
 
@@ -195,10 +194,10 @@ SecondPass:              // the goto
 // https://learn.adafruit.com/assets/571
 void TemperatureFunction()
 {
-  
   for (SampleIndex = 0; SampleIndex < SamplesCount; SampleIndex++) 
   {
     Samples[SampleIndex] = analogRead(ThermisterPin);
+    delay(10);
   }
   // average all the samples out
   AverageTemperature = 0;
@@ -212,13 +211,13 @@ void TemperatureFunction()
   AverageTemperature = 1023 / AverageTemperature - 1;
   AverageTemperature = SeriesResistor / AverageTemperature;
  
-  Steinhart = AverageTemperature / ThermisterNominal;     // (R/Ro)
-  Steinhart = log(Steinhart);                  // ln(R/Ro)
-  Steinhart /= BCoefficient;                   // 1/B * ln(R/Ro)
-  Steinhart += 1.0 / (TemperatureNominal + 273.15); // + (1/To)
-  Steinhart = 1.0 / Steinhart;                 // Invert
-  Steinhart -= (273.15 - SteinhartCalibration);    // convert to °C.. can this be used to tune/calibrate the 
-                                                   //temperature reading? testing
+  Steinhart = AverageTemperature / ThermisterNominal; // (R/Ro)
+  Steinhart = log(Steinhart);                         // ln(R/Ro)
+  Steinhart /= BCoefficient;                          // 1/B * ln(R/Ro)
+  Steinhart += 1.0 / (TemperatureNominal + 273.15);   // + (1/To)
+  Steinhart = 1.0 / Steinhart;                        // Invert
+  Steinhart -= 273.15;                                // convert to °C
+
   Differential = constrain((Steinhart - DesiredAmbient), 0, 5); // optimized by @FactoryFactory#4847 
   // Differential = EliminateNegative(Steinhart - DesiredAmbient); // store the unsigned short difference in tempurature
   
@@ -231,18 +230,18 @@ void LightingFunction()
 {
   if(digitalRead(DrawerSwitch) == LOW) // The switch has been released grounding the DrawerSwitch.
   {
-    digitalWrite(CabinetLightingMOSFET, HIGH); // Turn the interior cabinet LED strip on. pin 6
+    analogWrite(CabinetLightingMOSFET, HIGH); // Turn the interior cabinet LED strip on. pin 6
     CabinetBreathingValue = 255; // Set the value unused by PWM to match the write, because it does not get modulated.
-    digitalWrite(DrawerLightingMOSFET, HIGH); // Write the maximum value directly to pin 5
+    analogWrite(DrawerLightingMOSFET, HIGH); // Write the maximum value directly to pin 5
     DrawerBreathingValue = 255; // Set the value used by PWM to match the write, and
                                 // when the PWM resumes DrawerIsIncrementing will be set to false and dim out
     delay(PWMChangeDelay);
   }
   else // Do the modulating of the breathing nightlight. and turn off the interior light.
   {
-    digitalWrite(DrawerLightingMOSFET, DrawerLightingClamp()); // Write the oscilating DrawerBreathingValue retrieved 
+    analogWrite(DrawerLightingMOSFET, DrawerLightingClamp()); // Write the oscilating DrawerBreathingValue retrieved 
                                                                // from its clamp. pin 5
-    digitalWrite(CabinetLightingMOSFET, LOW); // Turn the strip off. pin 6
+    analogWrite(CabinetLightingMOSFET, LOW); // Turn the strip off. pin 6
     CabinetBreathingValue = 0; // Set the value used by PWM to match the write
     delay(PWMChangeDelay);
   }
