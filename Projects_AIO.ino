@@ -41,7 +41,7 @@
 
 // Debug variables:
 bool DebugFirstPass = true; // only useful to the extent the Serial output might contain an offline message.
-int ButtonMillisCooldown = 1000;
+int ButtonMillisCooldown = 1000; // initial value of 1 second
 bool DoLighting = true;
 bool DoRelay = true;
 bool DoTemperature = true;
@@ -138,15 +138,15 @@ void loop()
 {
   DeltaTime = millis();
   DeltaTime -= LastMillis;
-  ButtonMillisCooldown -= DeltaTime;
-  if ((digitalRead(PowerButton) == LOW) && (ButtonMillisCooldown <= 0))// The power button has been closed to ground
+  ButtonMillisCooldown -= DeltaTime; // Reduce this cooldown by DeltaTime. DeltaTime: 150 = (DeltaTime: 150 - 100) = 50; // ms
+  if ((digitalRead(PowerButton) == LOW) && (ButtonMillisCooldown <= 0))// The power button has been closed to ground, and the cooldown has at least elapsed.
   {
     digitalWrite(RelayOutput, 0); // Write LOW to the relay's MOSFET
-    ButtonMillisCooldown = 1000;
-    ShuttingDown = true; // Enable shutdown debug output
+    ButtonMillisCooldown = 2000; // The button grounded has been acted upon, set a 2 second delay before it can be again.
+    ShuttingDown = true; // Enable shutdown debug output, the pin has already been written to.
   }
   DebugFirstPass = true; // Not a result of goto
-SecondPass:
+SecondPass:              // the goto
   Serial.println(DebugZero + DeltaTime); // "Milliseconds last cycle (Δ Time): %value" *newline*
   if (DoSerial)
   {
@@ -217,20 +217,14 @@ void TemperatureFunction()
   Steinhart /= BCoefficient;                   // 1/B * ln(R/Ro)
   Steinhart += 1.0 / (TemperatureNominal + 273.15); // + (1/To)
   Steinhart = 1.0 / Steinhart;                 // Invert
-  Steinhart -= (273.15 - Steinhartcalibration);    // convert to °C.. can this be used to tune/calibrate the 
-                                //temperature reading? testing
-  Differential = EliminateNegative(Steinhart - DesiredAmbient); // store the unsigned short difference in tempurature
+  Steinhart -= (273.15 - SteinhartCalibration);    // convert to °C.. can this be used to tune/calibrate the 
+                                                   //temperature reading? testing
+  Differential = constrain((Steinhart - DesiredAmbient), 0, 5); // optimized by @FactoryFactory#4847 
+  // Differential = EliminateNegative(Steinhart - DesiredAmbient); // store the unsigned short difference in tempurature
+  
   FanPWM = PWMClamp(map(Differential, 0, 5, 0, 255)); // 0°C differnace, no power. +5°C differance, full power.
-  digitalWrite(FanMOSFET, FanPWM); // Write the speed to the MOSFET. pin 3
-  // analogWrite(FanMOSFET, FanPWM); // Why was this analog? testing
-}
-
-float EliminateNegative(float temp) // Just clamps a float to positive number. unsigned long/short gave useless numbers i.e. 65531
-{
-  if (temp <= 0)
-    return 0;
-  else 
-    return temp;
+  // digitalWrite(FanMOSFET, FanPWM);
+  analogWrite(FanMOSFET, FanPWM); // Changed back to analogWrite by @FactoryFactory#4847 request. pin 3
 }
 
 void LightingFunction()
@@ -377,4 +371,19 @@ static char *  bufe = cmd + CMDSIZE - 1;  // buffer end
     }
     DesiredAmbient = value;
   }
+
+// Chopping block:
+  float EliminateNegative(float temp) // Just clamps a float to positive number. unsigned long/short gave useless numbers i.e. 65531
+  {
+    if (temp <= 0)
+    {
+      return 0;
+    }
+    else 
+    {
+      return temp;
+    }
+  }
+
+  
 */
