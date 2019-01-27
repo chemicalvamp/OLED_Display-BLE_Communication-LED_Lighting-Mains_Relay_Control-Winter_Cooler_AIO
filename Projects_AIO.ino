@@ -15,9 +15,9 @@
 #define ThermisterNominal 9920
 #define SamplesCount 5
 #define TemperatureNominal 23
-#define BCoefficient 3950
+#define BCoefficient 3950 // Scary maths
 #define SeriesResistor 9884
-#define FanMOSFET 3
+#define FanMOSFET 3 // PWM
 
 // Relay pin defines:
 #define RelayOutput 11 // this is immediatly set to HIGH and turned off by a switch on the protoboard going to ground
@@ -31,10 +31,10 @@
 #define SDA A5
 
 // Lighting pin defines
-#define DrawerLightingMOSFET 5 // This is an exterior light, it will be Pulse Width Modulated as well as set HIGH when the microswitch is closed
-#define CabinetLightingMOSFET 6 // the ground for the interior LED strip will be toggled on when this pin goes HIGH 
-                                // there is a 10K resistor to ground on all MOSFETs
-#define AuxLightingMOSFET 9 // Not used but present in the breadboard
+#define DrawerLightingMOSFET 5 // This is an exterior light, it will be Pulse Width Modulated as well as set HIGH when the microswitch is closed. PWM
+#define CabinetLightingMOSFET 6 // the ground for the interior LED strip will be toggled on when this pin goes HIGH. PWM
+#define AuxLightingMOSFET 9 // Not used but present in the breadboard. PWM
+                            // there is a 10K resistor to ground on all MOSFETs
 #define DrawerSwitch 8 // Center pin is ground and the hinge side pin is this pin
 #define CabinetSwitch 7 // Unused, all switches are paralleled together
 #define DopplerInput 2 // Unused, will try a module in the future.
