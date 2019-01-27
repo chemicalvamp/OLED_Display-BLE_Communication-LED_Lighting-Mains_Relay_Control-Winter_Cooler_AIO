@@ -4,5 +4,5 @@ Current perpetual next stage:
 	DeltaTime. (displaying as 0?)
 	PWM 12V computer case fan winter cooler climate control. (temperature problems?)
 	Default ON Relay controller. (working)
-	PWM breathing 12V LED strip light with microswitch grounded when door is open to enable maximum output and enable previously dibabled strips. (PWM problems?)
+	PWM breathing 12V LED strip light with microswitch grounded when door is open to enable maximum output and enable previously disabled strips. (PWM problems?)
 	

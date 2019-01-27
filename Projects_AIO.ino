@@ -41,8 +41,9 @@
 
 // Debug variables:
 bool DebugFirstPass = true; // only useful to the extent the Serial output might contain an offline message.
-bool DoLighting = false;
-bool DoRelay = false;
+int ButtonMillisCooldown = 1000;
+bool DoLighting = true;
+bool DoRelay = true;
 bool DoTemperature = true;
 bool DoSerial = true;
 bool DoDebug = true;
@@ -62,9 +63,10 @@ unsigned long PWMChangeDelay = 10; // Simple delay between PWM change actions
 uint8_t SampleIndex;
 float Samples[SamplesCount];
 float Steinhart; // Formula variable for temperature in °C
+float Steinhartcalibration = 39.00f; // The adjustment Made to the end temperature so it displays the same as my probe thermometer.
 float Differential = 5; // The difference in tempurature between Average and Desired.
-float AverageTemperature = 23.14f; // The average temperature for the last 5 cycles
-float DesiredAmbient = 23.14; // Desired tempurature for this local space °C. Can you see the broken? o.0
+float AverageTemperature; // The average temperature for the last 5 cycles
+float DesiredAmbient = 7.03; // Desired tempurature for this local space °C. Can you see the broken? o.0
 int FanPWM = 0; // The value to be written to FanMOSFET pin 3
 
 // Relay Variables:
@@ -123,6 +125,7 @@ void setup()
   pinMode(DrawerSwitch, INPUT_PULLUP); // All Drawer microswitches are parrallel and close to ground.
   //pinMode(CabinetSwitch, INPUT_PULLUP); // Unused, the system uses parrallel switches.
   //pinMode(DopplerInput, INPUT); // currently unused, will this setting be correct if it puts out a 3.3V logic?
+  AverageTemperature = DesiredAmbient;
   analogReference(EXTERNAL);
   Serial.begin(9600);
   while (!Serial) 
@@ -135,9 +138,11 @@ void loop()
 {
   DeltaTime = millis();
   DeltaTime -= LastMillis;
-  if ((digitalRead(PowerButton) == LOW) && (DeltaTime))// The power button has been closed to ground
+  ButtonMillisCooldown -= DeltaTime;
+  if ((digitalRead(PowerButton) == LOW) && (ButtonMillisCooldown <= 0))// The power button has been closed to ground
   {
     digitalWrite(RelayOutput, 0); // Write LOW to the relay's MOSFET
+    ButtonMillisCooldown = 1000;
     ShuttingDown = true; // Enable shutdown debug output
   }
   DebugFirstPass = true; // Not a result of goto
@@ -190,16 +195,13 @@ SecondPass:
 // https://learn.adafruit.com/assets/571
 void TemperatureFunction()
 {
-  Samples[SampleIndex] = analogRead(ThermisterPin);
-  SampleIndex++;
-  if (SampleIndex > 5)
+  
+  for (SampleIndex = 0; SampleIndex < SamplesCount; SampleIndex++) 
   {
-    SampleIndex = 0;
-  } // removed the for loop that took 5 samples at once, this should not be a rolling 5 samples
- 
+    Samples[SampleIndex] = analogRead(ThermisterPin);
+  }
   // average all the samples out
   AverageTemperature = 0;
-  
   for (SampleIndex = 0; SampleIndex < SamplesCount; SampleIndex++) 
   {
      AverageTemperature += Samples[SampleIndex];
@@ -215,9 +217,8 @@ void TemperatureFunction()
   Steinhart /= BCoefficient;                   // 1/B * ln(R/Ro)
   Steinhart += 1.0 / (TemperatureNominal + 273.15); // + (1/To)
   Steinhart = 1.0 / Steinhart;                 // Invert
-  
-  Steinhart -= (273.15 + 41.57);    // convert to °C.. can this be used to tune/calibrate the 
-                                    //temperature reading? testing
+  Steinhart -= (273.15 - Steinhartcalibration);    // convert to °C.. can this be used to tune/calibrate the 
+                                //temperature reading? testing
   Differential = EliminateNegative(Steinhart - DesiredAmbient); // store the unsigned short difference in tempurature
   FanPWM = PWMClamp(map(Differential, 0, 5, 0, 255)); // 0°C differnace, no power. +5°C differance, full power.
   digitalWrite(FanMOSFET, FanPWM); // Write the speed to the MOSFET. pin 3
