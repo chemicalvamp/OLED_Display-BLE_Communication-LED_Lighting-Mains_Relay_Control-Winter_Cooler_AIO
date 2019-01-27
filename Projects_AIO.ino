@@ -44,7 +44,7 @@ bool DebugFirstPass = true; // only useful to the extent the Serial output might
 int ButtonMillisCooldown = 1000; // initial value of 1 second
 bool DoLighting = true;
 bool DoRelay = true;
-bool DoTemperature = true;
+bool DoTemperature = false;
 bool DoSerial = true;
 bool DoDebug = true;
 
@@ -55,7 +55,7 @@ String inString = ""; // Will be assembled into a command string.
 // Timing variables:
 unsigned long LastMillis = 0; // Last millis(); will be stored into this at end of loop.
 unsigned long DeltaTime = 0;
-unsigned long PWMChangeDelay = 10; // Simple delay between PWM change actions
+unsigned long PWMChangeDelay = 0; // Simple delay between PWM change actions
 
 // https://learn.adafruit.com/thermistor/using-a-thermistor
 // https://learn.adafruit.com/assets/571
@@ -76,8 +76,8 @@ bool DrawerIsIncrementing = true; // A switch to keep track of which + or - it i
 bool CabinetIsIncrementing = true; // the same function as the previous, but with its own variable set.
 int DrawerBreathingValue = 135; // The initial breathing value, about half but aligned to reach 255 exactly.
 int CabinetBreathingValue = 135; // Not really used, the inside cabinet light is off unless a switch is grounded
-int BreathingIncrement = 20; // When we are incrementing, by how much?
-int BreathingDecrement = 40; // this will cause it to dim more rapidly
+int BreathingIncrement = 7; // When we are incrementing, by how much?
+int BreathingDecrement = 14; // this will cause it to dim more rapidly
 
 // https://www.arduino.cc/reference/en/language/functions/time/millis/
 // Timing Debug/Constants:
@@ -186,7 +186,7 @@ SecondPass:              // the goto
       Serial.println(DebugFive + DebugSix); // "Relay state: " + "Online" *newline*
     }
   }
-  delay(350); // For the ease of reading Serial
+  //delay(350); // For the ease of reading Serial
   LastMillis = millis(); // Finally save millis to LastMillis before ending this cycle.
 }
 
@@ -230,9 +230,9 @@ void LightingFunction()
 {
   if(digitalRead(DrawerSwitch) == LOW) // The switch has been released grounding the DrawerSwitch.
   {
-    analogWrite(CabinetLightingMOSFET, HIGH); // Turn the interior cabinet LED strip on. pin 6
+    digitalWrite(CabinetLightingMOSFET, HIGH); // Turn the interior cabinet LED strip on. pin 6
     CabinetBreathingValue = 255; // Set the value unused by PWM to match the write, because it does not get modulated.
-    analogWrite(DrawerLightingMOSFET, HIGH); // Write the maximum value directly to pin 5
+    digitalWrite(DrawerLightingMOSFET, HIGH); // Write the maximum value directly to pin 5
     DrawerBreathingValue = 255; // Set the value used by PWM to match the write, and
                                 // when the PWM resumes DrawerIsIncrementing will be set to false and dim out
     delay(PWMChangeDelay);
