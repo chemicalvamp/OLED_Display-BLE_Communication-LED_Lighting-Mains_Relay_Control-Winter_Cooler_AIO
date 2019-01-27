@@ -1,17 +1,22 @@
 #include <Arduino.h>
-#include <U8g2lib.h>
+//#include <U8g2lib.h>
 
 // Unused pin defines:
 #define UnDefined0 = 4
 #define UnDefined1 = 5 // PWM
 #define UnDefined2 = 6 // PWM
 #define UnDefined3 = 13
-#define UnDefined4 = A2
-#define UnDefined5 = A3
+#define UnDefined5 = A2
+#define UnDefined6 = A3
 
 // Tempurature pin defines:
-#define Ambient A0
-#define UpperAmbient A1
+#define BoardThermisterPin A1
+#define RemoteThermisterPin A0
+#define ThermisterNominal 10000
+#define TemperatureNominal 25
+#define SamplesCount 5
+#define BCoefficient 3950
+#define SeriesResistor 10000
 #define FanMOSFET 3
 
 // Relay defines:
@@ -26,15 +31,18 @@
 #define CMDSIZE 10
 
 // Lighting pin defines
-#define DrawerLightingMOSFET 10
-#define CabinetLightingMOSFET 9
+#define DrawerLightingMOSFET 5
+#define CabinetLightingMOSFET 6
+#define AuxLightingMOSFET 9
 #define DrawerSwitch 8
 #define CabinetSwitch 7
 #define DopplerInput 2
 
+// Timing variables:
+int LastMillies = 0;
+
 // Tempurature variables:
-float readAmbient, readUpperAmbient, offsetZero, differentialZero = 0;
-float desiredAmbient = 60.00f; // Desired tempurature for this local space.
+float DesiredAmbient = -12.95f; // Desired tempurature for this local space °C.
 int FanPWM = 0;
 
 // Relay Variables:
@@ -48,25 +56,28 @@ int CabinetBreathingValue = 135;
 int BreathingIncrement = 20;
 int BreathingDecrement = 40;
 
+// Timing constants:
+String DebugZero = "Milliseconds last cycle (Δ Time): ";
 
 // Tempurature constants:
-float R1 = 10000; 
-float logR2, R2;
-float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
-String debugZero = "Ambient: ";
-String debugOne = " ~ Upper Ambient: ";
-String debugThree = " ~ Differential Zero: ";
-String debugFour = " ~ PWM Zero: ";
+int Samples[SamplesCount];
+float Steinhart;
+float DifferentialZero = 0.00f;
+float AverageTemperature = -12.95f;
+String DebugOne = "Temperature: ";
+String DebugTwo = "°C ~ Desired: ";
+String DebugThree = "°C ~ Differential: ";
+String DebugFour = " ~ PWM Zero: ";
 
 // Relay constants:
-String debugFive = "Relay state: ";
-String debugSix = "Online";
-String debugSeven = "Shutting down";
-String debugEight = "Offline";
+String DebugFive = "Relay state: ";
+String DebugSix = "Online";
+String DebugSeven = "Shutting down";
+String DebugEight = "Offline";
 
 // Lighting constants:
-String debugNine = "Drawer PWM: ";
-String debugTen = " ~ Cabinet PWM: ";
+String DebugNine = "Drawer PWM: ";
+String DebugTen = " ~ Cabinet PWM: ";
 
 // Commands constants:
 static char    cmd[CMDSIZE];              // command string buffer
@@ -75,67 +86,80 @@ static char *  bufe = cmd + CMDSIZE - 1;  // buffer end
 
 void setup() 
 {
-  pinMode(Ambient, INPUT);
-  pinMode(UpperAmbient, INPUT);
+  //pinMode(RemoteThermisterPin, INPUT);
   pinMode(FanMOSFET, OUTPUT);
   pinMode(RelayOutput, OUTPUT);
-  pinMode(PowerButton, INPUT);
+  pinMode(PowerButton, INPUT_PULLUP);
   pinMode(DrawerLightingMOSFET, OUTPUT);
   pinMode(CabinetLightingMOSFET, OUTPUT);
-  pinMode(DrawerSwitch, INPUT);
-  pinMode(CabinetSwitch, INPUT);
-  pinMode(DopplerInput, INPUT);
+  pinMode(DrawerSwitch, INPUT_PULLUP);
+  pinMode(CabinetSwitch, INPUT_PULLUP);
+  //pinMode(DopplerInput, INPUT);
   digitalWrite(RelayOutput, HIGH);
   digitalWrite(DrawerLightingMOSFET, DrawerBreathingValue);
   digitalWrite(CabinetLightingMOSFET, CabinetBreathingValue);
   ShuttingDown = false;
   Serial.begin(9600);
+  analogReference(EXTERNAL);
 }
 
 void loop() 
 {
-  readAmbient = convertTemp(analogRead(Ambient)); // store the float of ambient tempurature
-  readUpperAmbient = convertTemp(analogRead(UpperAmbient)); // store the float of ceiling tempurature
-  differentialZero = eliminateNegative(readUpperAmbient - desiredAmbient); // store the float difference in tempurature
-  FanPWM = PWMClamp(map(differentialZero, 0, 5, 0, 255)); // no differnace, no power. 5 °F differance full power.
-  analogWrite(FanMOSFET, FanPWM);
-  
-  int ch;
-  while (Serial.available() > 0) 
-  {
-    ch = Serial.read();
-
-    if (ch == '\n') 
-    {
-      *bufp = '\0';
-      process();
-      bufp = cmd;
-    } 
-    else {
-      if (bufp < bufe) 
-      {
-        *bufp++ = ch;
-      }
-    }
-  }
-
   if (digitalRead(PowerButton) == LOW)
   {
-    DrawerIsIncrementing = !DrawerIsIncrementing;
-    CabinetIsIncrementing = !CabinetIsIncrementing;
-    analogWrite(RelayOutput, 0);
+    digitalWrite(RelayOutput, 0);
     ShuttingDown = true;
   }
-  debug();
+  DoSerial();
   DoLighting();
-  delay(52);
+  DoTemperature();
+  Debug();
+  LastMillies = millis();
+  //delay(80);
+}
+
+
+// https://learn.adafruit.com/thermistor/using-a-thermistor
+// https://learn.adafruit.com/assets/571
+void DoTemperature()
+{
+  uint8_t i;
+  // take N samples in a row, with a slight delay
+  for (i=0; i< SamplesCount; i++) 
+  {
+   Samples[i] = analogRead(RemoteThermisterPin);
+   delay(5);
+  }
+ 
+  // average all the samples out
+  AverageTemperature = 0;
+  for (i=0; i< SamplesCount; i++) 
+  {
+     AverageTemperature += Samples[i];
+  }
+  AverageTemperature /= SamplesCount;
+ 
+  // convert the value to resistance
+  AverageTemperature = 1023 / AverageTemperature - 1;
+  AverageTemperature = SeriesResistor / AverageTemperature;
+ 
+  Steinhart = AverageTemperature / ThermisterNominal;     // (R/Ro)
+  Steinhart = log(Steinhart);                  // ln(R/Ro)
+  Steinhart /= BCoefficient;                   // 1/B * ln(R/Ro)
+  Steinhart += 1.0 / (TemperatureNominal + 273.15); // + (1/To)
+  Steinhart = 1.0 / Steinhart;                 // Invert
+  Steinhart -= 273.15;                         // convert to C
+   
+  DifferentialZero = EliminateNegative(Steinhart - DesiredAmbient); // store the float difference in tempurature
+  FanPWM = PWMClamp(map(DifferentialZero, 0, 5, 0, 255)); // 0°C differnace, no power. +5°C differance, full power.
+  analogWrite(FanMOSFET, FanPWM);
 }
 
 void DoLighting()
 {
   if(digitalRead(DrawerSwitch) == LOW)
   {
-    digitalWrite(DrawerLightingMOSFET, 255);
+    digitalWrite(DrawerLightingMOSFET, HIGH);
   }
   else
   {
@@ -144,7 +168,7 @@ void DoLighting()
 
   if(digitalRead(CabinetSwitch) == LOW)
   {
-    digitalWrite(CabinetLightingMOSFET, 255);
+    digitalWrite(CabinetLightingMOSFET, HIGH);
   }
   else
   {
@@ -154,7 +178,7 @@ void DoLighting()
 
 int CabinetLightingClamp()
 {
-  if(CabinetIsIncrementing)
+  if(CabinetIsIncrementing == true)
   {
     CabinetBreathingValue += BreathingIncrement;
   }
@@ -166,22 +190,19 @@ int CabinetLightingClamp()
   if(CabinetBreathingValue >= 255)
   {
     CabinetIsIncrementing = false;
-    return 255;
+    CabinetBreathingValue = 255;
   }
   else if(CabinetBreathingValue <= 0)
   {
     CabinetIsIncrementing = true;
-    return 0;
+    CabinetBreathingValue = 0;
   }
-  else
-  {
-    return CabinetBreathingValue;
-  }
+  return CabinetBreathingValue;
 }
 
 int DrawerLightingClamp()
 {
-  if(DrawerIsIncrementing)
+  if(DrawerIsIncrementing == true)
   {
     DrawerBreathingValue += BreathingIncrement;
   }
@@ -192,32 +213,72 @@ int DrawerLightingClamp()
   if(DrawerBreathingValue >= 255)
   {
     DrawerIsIncrementing = false;
-    return 255;
+    DrawerBreathingValue = 255;
   }
   else if(DrawerBreathingValue <= 0)
   {
     DrawerIsIncrementing = true;
-    return 0;
+    DrawerBreathingValue = 0;
+  }
+  return DrawerBreathingValue;
+}
+
+
+void Debug()
+{
+  Serial.println(DebugZero + (millis() - LastMillies));
+  Serial.print(DebugOne + Steinhart);
+  Serial.print(DebugTwo + DesiredAmbient);
+  Serial.print(DebugThree + DifferentialZero);
+  Serial.println(DebugFour + FanPWM);
+
+  if (ShuttingDown == true)
+  {
+    Serial.println(DebugFive + DebugSeven); // shutting down
   }
   else
   {
-    return DrawerBreathingValue;
+    Serial.println(DebugFive + DebugSix); // online
+  }
+  Serial.print(DebugNine + DrawerBreathingValue);
+  Serial.println(DebugTen + CabinetBreathingValue);
+}
+
+void DoSerial()
+{
+  int ch;
+  while (Serial.available() > 0) 
+  {
+    ch = Serial.read();
+
+    if (ch == '\n') 
+    {
+      *bufp = '\0';
+      HandleCommand();
+      bufp = cmd;
+    } 
+    else {
+      if (bufp < bufe) 
+      {
+        *bufp++ = ch;
+      }
+    }
   }
 }
 
-void process()
+void HandleCommand()
 {
   if (strcmp(cmd, "FanTempUp") == 0) 
   {
-    desiredAmbient += 0.5f;
+    DesiredAmbient += 0.5f;
   }
   if (strcmp(cmd, "FanTempDown") == 0) 
   {
-    desiredAmbient -= 0.5f;
+    DesiredAmbient -= 0.5f;
   }
 }
   
-float eliminateNegative(float temp)
+float EliminateNegative(float temp)
 {
   if (temp <= 0)
     return 0;
@@ -228,51 +289,10 @@ float eliminateNegative(float temp)
 int PWMClamp(float PWM){
   if(PWM >= 255)
     return 255;
-   else if (PWM <= 76)
+   else if (PWM <= 32) // 48,64 worked alright
     return 0;
    else
     return PWM;
-}
-
-void debug()
-{
-  Serial.print(debugZero + readAmbient);
-  Serial.print(debugOne + readUpperAmbient);
-  Serial.print(debugThree + differentialZero);
-  Serial.println(debugFour + FanPWM);
-
-  if (ShuttingDown == true)
-  {
-    Serial.println(debugFive + debugSeven); // shutting down
-  }
-  else
-  {
-    Serial.println(debugFive + debugSix); // online
-  }
-  Serial.print(debugNine + DrawerBreathingValue);
-  Serial.println(debugTen + CabinetBreathingValue);
-}
-
-int colorWheelClamp(int in)
-{
-  if (in < 0)
-    return 0;
-  else if (in >= 359)
-    return 359;
-  else
-    return in;
-}
-
-// 1 incriment = 0.18 degrees
-// 265 = 32F 300 = 38F 401 = 56F 480 = 71F
-float convertTemp(int Vo)
-{
-  R2 = R1 * (1023.0 / (float)Vo - 1.0);
-  logR2 = log(R2);
-  float T = (1.0 / (c1 + c2*logR2 + c3*logR2*logR2*logR2));
-  T = T - 273.15;
-  T = (T * 9.0)/ 5.0 + 32.0;
-  return T;
 }
 
 // command temporary space:
@@ -292,6 +312,6 @@ float convertTemp(int Vo)
         return;
       }
     }
-    desiredAmbient = value;
+    DesiredAmbient = value;
   }
 */
