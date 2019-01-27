@@ -14,8 +14,8 @@
 #define ThermisterPin A0 // What will be read
 #define SamplesCount 5
 #define TemperatureNominal 18  // Tweaking #1
-#define ThermisterNominal 52000 // Tweaking #2
-#define SeriesResistor 6000  // Tweaking #3
+#define ThermisterNominal 52000 // Tweaking #2 my probe with leads came to about 23200 but higher gives a more accurate result.
+#define SeriesResistor 9600  // Tweaking #3
 #define BCoefficient 3950 // Scary maths don't touch
 #define FanMOSFET 3 // PWM
 
